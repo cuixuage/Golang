@@ -2,92 +2,81 @@ package main
 
 import (
 	"runtime"
-	"fmt"
-	"code.byted.org/gin/ginex"
+	//"code.byted.org/gin/ginex"
 	"net/http"
 	"io/ioutil"
 	"bytes"
 	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"code.byted.org/gin/ginex/ctx"
+	"github.com/spf13/cast"
+	"reflect"
+	"meizuapi/toutiao_meizu_app"
+	"protobuf/proto"
 )
 
-/*
-//FIXME requstID定的格式也不一样
- */
-type CheckRequst struct{
-	ReqId string `json:"reqid"`
-	Appkey string 	`json:"appkey"`
-	Checkinfo string `json:"checkInfo"`
-	Nonce int64 `json:"nonce"`
-}
-type MeizuzResponse struct {
-	Code int `json:"code"`
-	Value interface{} `json:"value"`
-	Message string `json:"message"`
-}
 type recoverWriter struct{}
 func (rw *recoverWriter) Write(p []byte) (int, error) {
 	return gin.DefaultErrorWriter.Write(p)
 }
-/*
-1。 json 序列化操作  将数据按照json格式解析到req中
-2。 c.set 在gin上下文中定义变量 vivo_req:req
-3。 c.Next() 处理url请求
- */
 func JsonRequestContext() gin.HandlerFunc {
 		return func(c *gin.Context) {
 			if  c.Request.Method != "GET" {
 				cacheBody, err := ioutil.ReadAll(c.Request.Body)              //打开
 				c.Request.Body = ioutil.NopCloser(bytes.NewBuffer(cacheBody)) //无操作关闭
-					if err == nil {
+					if err == nil && cacheBody != nil{
 						c.Set("cachebody", cacheBody)
 					}
-				fmt.Print("\n")
-				fmt.Print("this is cachebody:",string(cacheBody))
-				fmt.Print("\n")
 
 				checkreq := &CheckRequst{}
-				err = json.Unmarshal([]byte(c.Request.Header.Get("HTTP_METADATA")), &checkreq)
-				/*
-				header 校验。失败则abort
-				 */
+				err = json.Unmarshal([]byte(c.Request.Header.Get("METADATA")), &checkreq)
 				_,e := get_check_error_response(checkreq)
 				if e != nil{
-					c.Abort()
+					var res *JsonResponse = &JsonResponse{}
+					res.Code = cast.ToInt(META_DATA_ERROR)
+					res.Message = "catch error 校验失败"
+					c.AbortWithStatusJSON(500,res)
 					c.Next()
-				}else{
-					fmt.Print("header 校验成功 \n")
 				}
-				c.Next() //处理url请求  Next should be used only inside middleware
+				c.Next()
 		}
 	}
 }
 
-/*
-1。 c.Next()	 处理url请求
-关键：  此请求意外终止后 判断imei是否被锁定（锁定则意味着被其他routine处理）
-2。 c.Get("vivo_rsp")  之前在调用url方法中 c。set(vivo_rsp)
-3。 c.json 返回
- */
 func ResponseHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Next()
-		var res *MeizuzResponse = &MeizuzResponse{}
-		/*
-		注意处理abort情况
-		 */
+		var res *JsonResponse = &JsonResponse{}
 		if c.IsAborted(){
 			res.Code = 500
 			res.Message = "catch error"
-			c.AbortWithStatusJSON(200,res)
+			c.AbortWithStatusJSON(500,res)
 		}else if c.Request.Method != "GET" {
-			res.Code = 1000
-			val, _ := c.Get("rsp")				//就是thrift返回的数据
-			res.Value = val
-			//fmt.Print("this is callback_rsp = ",val)
-			//fmt.Print(res.Value)
-			c.JSON(200, val)
+			pb,exits := c.Get("pb")
+			if exits && pb=="false" {
+				res.Code = cast.ToInt(*SUCCESS)
+				res.Message = "success"
+				res.Value = map[string]int{"status":0}
+				res.Redirect = ""
+				c.JSON(200,res)
+			}else if pb == "upload"{
+				strReqId,_ := c.Get("uploadReqId")
+				rspUpload := &JsonResponseUpload{}
+				rspUpload.ReqId = strReqId.(string)
+				rspUpload.Message = StrSuccess
+				rspUpload.Code = cast.ToInt(SUCCESS)
+				c.JSON(200,rspUpload)
+			} else if pb == "true"{
+				rsp,_ := c.Get("rsp")
+				pb_result := &toutiao_meizu_app.BinaryDisplayResult{}
+				pb_result.Code = SUCCESS
+				pb_result.Message = &StrSuccess
+				r := reflect.ValueOf(rsp)
+				f_rankresult := reflect.Indirect(r).FieldByName("RankResults")
+				pb_result.Value = f_rankresult.Bytes()
+				pb_bytes,_ := proto.Marshal(pb_result)
+				c.Data(200,"application/octet-stream",pb_bytes)
+			}
 		}
 	}
 }
@@ -95,10 +84,8 @@ func ResponseHandler() gin.HandlerFunc {
 
 func main(){
 	runtime.GOMAXPROCS(runtime.NumCPU() - 1)
-	//r := gin.Default()
+	r := gin.Default()
 
-	ginex.Init()
-	r := ginex.New()
 	InitThriftClient()
 	r.Use(gin.RecoveryWithWriter(&recoverWriter{}))
 	r.Use(ctx.Ctx())
@@ -110,40 +97,31 @@ func main(){
 	//}
 	//r.Use(BlockImei())
 
-
 	meizu_router := r.Group("/collaborate/meizu")
 	{
-		meizu_router.POST("/idea_predict", idea_predict)
-		//meizu_router.POST("/recommend/normal", recommend_predict)
-		//
-		meizu_router.POST("/predict/callback", callback)
-		//meizu_router.POST("/predict/callback_test", callback_test)
-		//meizu_router.POST("/predict/boost", boost)
+		meizu_router.POST("/idea_predict/", idea_predict)
+		meizu_router.POST("/recommend/normal", recommend_predict)
+		meizu_router.POST("/predict/callback/", callback)
+		meizu_router.POST("/predict_binary/", predict_binary)
+		/*
+		FIXME  路径是search_pb   ??  search路径是按照json格式返回的
+ 		*/
+		meizu_router.POST("/search_pb/", search_pb)
+		meizu_router.POST("/upload_behavior/", upload_behavior)
+		meizu_router.POST("/upload_applist/", upload_applist)
 
-		meizu_router.POST("/predict_binary", predict_binary)
-		//meizu_router.POST("/predict_binary_test", predict_binary_test)
+		meizu_router.POST("/idea_predict_test/", idea_predict_test)
+		meizu_router.POST("/recommend/normal_test", recommend_predict_test)
+		meizu_router.POST("/predict/callback_test/", callback_test)
+		meizu_router.POST("/predict_binary_test/", predict_binary_test)
+		meizu_router.POST("/search_pb_test/", search_pb_test)
+		meizu_router.POST("/upload_behavior_test/", upload_behavior_test)
+		meizu_router.POST("/upload_applist_test/", upload_applist_test)
 
-		//meizu_router.POST("/predict_pb", predict_pb)
-		//meizu_router.POST("/search_pb", search_pb)
-		//meizu_router.POST("/predict_pb_test", predict_pb_test)
-		//meizu_router.POST("/search_pb_test", search_pb_test)
+
+		//这个updata——db路径在使用吗/
+		//url(r'^collaborate/meizu/update_ad/$', 'updatedb'),
 	}
-
-	//meizu_router_upload := r.Group("/collaborate/meizu")
-	//{
-	//	meizu_router_upload.POST("/update_ad", updatedb)
-	//	meizu_router_upload.POST("/upload_behavior", upload_behavoir)
-	//	meizu_router_upload.POST("/upload_behavior", upload_applist)
-	//
-	//	meizu_router_upload.POST("/update_ad_test", updatedb)
-	//	meizu_router_upload.POST("/upload_behavior_test", upload_behavoir)
-	//	meizu_router_upload.POST("/upload_applist_test", upload_applist)
-	//}
-	//
-	//meizu_router_relevant := r.Group("/collaborate/meizu")
-	//{
-	//	meizu_router_relevant.POST("/search_relevant", relevant)
-	//}
 
 	r.Static("../templates","../templates")
 	r.GET("/test", func(c *gin.Context) {

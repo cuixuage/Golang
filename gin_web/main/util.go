@@ -8,13 +8,15 @@ import (
 	"fmt"
 	"crypto/md5"
 	"encoding/hex"
+	"code.byted.org/gopkg/thrift"
+	"net"
+	"2018_2_5/abtest_thrift"
 )
-
 var success int32= 1000
 var SUCCESS  *int32 = &success
+var StrSuccess = "success"
 
-var mETA_DATA_ERROR int32= 1001
-var META_DATA_ERROR *int32 = &mETA_DATA_ERROR
+var META_DATA_ERROR int32= 1001
 
 var uNKOWN_ERROR int32= 1002
 var UNKOWN_ERROR *int32 = &uNKOWN_ERROR
@@ -28,23 +30,75 @@ var DATA_FORMAT_ERROR *int32 = &dATA_FORMAT_ERROR
 var aD_NOT_FOUND int32= 110000
 var AD_NOT_FOUND *int32 = &aD_NOT_FOUND
 
-//FIMXME  注意sessionid、 的初始化
+const MEIZU_UID_TYPE = 111
+
+//func _c_mul(a, b) {
+//	return eval(hex((long(a) * b) & (2 * *64 - 1))[:-1])
+//}
+
+//func hashstring(my_string) {
+//	if not my_string:
+//	return 0 # empty
+//	value = ord(my_string[0]) << 7
+//	for
+//	char
+//	in
+//my_string:
+//	value = _c_mul(1000003, value) ^ ord(char)
+//	value = value ^ len(my_string)
+//	return value % (2 * * 64)
+//}
+
+func getABClient(conn net.Conn) *abtest_thrift.VersionServiceClient {
+	var transport thrift.TTransport
+	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
+	transportFactory := thrift.NewTFramedTransportFactory(thrift.NewTBufferedTransportFactory(4096))
+	transport = thrift.NewTSocketFromConnTimeout(conn, TIMEOUT_CONNECT_TIME * time.Millisecond)
+	transport = transportFactory.GetTransport(transport)
+	return abtest_thrift.NewVersionServiceClientFactory(transport, protocolFactory)
+}
+
+func get_ab_setting(){
+	//request = {"token":"3rd_meizu_app","uid":hashstring(imei), "uid_type":MEIZU_UID_TYPE}
+	request := `{"token":"3rd_meizu_app","uid":"", "uid_type":MEIZU_UID_TYPE}`
+	thriftReq := &abtest_thrift.VersionReq{request}
+	//localIP := kite.GetLocalIp()
+	localIP := "10.8.64.231"
+	fmt.Print(localIP,"\n")
+	port := "7701"
+	c,err := pool.Get(localIP, port, TIMEOUT_CONNECT_TIME*time.Millisecond)
+	if err != nil{
+		fmt.Print(err," ","can't get conn \n")
+	}
+	abClient := getABClient(c)
+	rsp,err := abClient.GetVersionWithUserRequestForGolang(thriftReq)
+	if err != nil{
+		fmt.Print("can't get ab_response\n")
+	}
+	fmt.Print(rsp.Err," ",rsp.Info," ",*rsp.Msg,"\n");
+}
 
 func initCallbackreq(thriftreq *predict.Req, req *CallbackReq){
-	context_dict := make(map[string]string)
+	context_dict := make(map[string]interface{})
 	impr_string_list := make([]string,0)
-	/*
-	注意指针类型
-	 */
 	thrift_ad_locations := make([] *predict.AdLocation,0)
 	context_dict["net"] = req.Net
 	context_dict["ip"] = req.Ip
-	context_dict["device_model"] = req.DeviceModel
-	context_dict["vc"] = req.VC
-	context_dict["language"] = req.Language
-	context_dict["uid"] = req.Uid
-	context_dict["sn"] = req.Sn
-	context_dict["request_id"] = req.ReqId
+	if req.DeviceModel != "" {
+		context_dict["device_model"] = req.DeviceModel
+	}
+	if req.VC != ""{
+		context_dict["vc"] = req.VC
+	}
+	if req.Language != ""{
+		context_dict["language"] = req.Language
+	}
+	if req.Uid != ""{
+		context_dict["uid"]= req.Uid
+	}
+	if req.Sn != ""{
+		context_dict["sn"] = req.Sn
+	}
 
 	//query := req.Query
 	app_id := req.RealAppId
@@ -70,11 +124,16 @@ func initCallbackreq(thriftreq *predict.Req, req *CallbackReq){
 		if impr["idea_id"] != 0 {
 			is_idea = true
 		}
-		impr["score"] = element.Sorce
+		impr["score"] = element.Score
 		impr["kw"] = element.Keyword
 		impr_collection,_ := json.Marshal(impr)
 		impr_string_list = append(impr_string_list,string(impr_collection))
  	}
+
+ 	//fmt.Print("\nAB test func \n")
+	//get_ab_setting()
+
+
 	//FIXME adversion 如何使用  ??
  	//vtp := ""
  	//if app_id != 0{
@@ -91,35 +150,44 @@ func initCallbackreq(thriftreq *predict.Req, req *CallbackReq){
  	if is_idea{
  		source = 4
 	}
-	thriftreq.Business = cast.ToInt16(business)
+	thriftreq.Business = business
 	thriftreq.ReqId = &req.ReqId
-	thriftreq.RelAppId = cast.ToInt64(app_id)
+	thriftreq.RelAppId = app_id
 	thriftreq.Imei = req.Imei
 	thriftreq.SessionId = req.SessionID
 	thriftreq.AdLocations = thrift_ad_locations
 	dictstring,_ := json.Marshal(context_dict)
 	thriftreq.ContextInfo = string(dictstring)
 	//thriftreq.AbtestParameters = 		//FIXME  ab test的更新
-	thriftreq.Debug = true
 	thriftreq.ImprList = impr_string_list
 	thriftreq.Source = cast.ToInt16(source)
 	//return thriftreq
 }
 
 func initPredictbinary(thriftreq *predict.Req, req *PredictReq){
-	context_dict := make(map[string]string)
+	context_dict := make(map[string]interface{})
 	thrift_ad_locations := make([] *predict.AdLocation,0)
 	context_dict["net"] = req.Net
 	context_dict["ip"] = req.Ip
-	context_dict["device_model"] = req.DeviceModel
-	context_dict["vc"] = req.VC
-	context_dict["language"] = req.Language
-	context_dict["uid"] = req.Uid
-	context_dict["sn"] = req.Sn
-	context_dict["request_id"] = req.ReqId
+	//if req.DeviceModel != "" {
+	//	context_dict["device_model"] = req.DeviceModel
+	//}
+	if req.VC != 0{
+		context_dict["vc"] = req.VC
+	}
+	if req.Language != ""{
+		context_dict["language"] = req.Language
+	}
+	if req.Uid != ""{
+		context_dict["uid"]= req.Uid
+	}
+	if req.Sn != ""{
+		context_dict["sn"] = req.Sn
+	}
 
 	var business int16
 	var enableRank bool
+	var topk int16
 	if req.EnableRank == nil{
 		enableRank = true
 	}else{
@@ -129,6 +197,11 @@ func initPredictbinary(thriftreq *predict.Req, req *PredictReq){
 		business = 1
 	}else{
 		business = *req.Business
+	}
+	if req.Topk == nil {
+		topk = 0
+	}else{
+		topk = *req.Topk
 	}
 	for _,element := range req.AdLocations{
 		thrift_ad_location := predict.NewAdLocation()
@@ -142,68 +215,244 @@ func initPredictbinary(thriftreq *predict.Req, req *PredictReq){
 		thrift_ad_location.PositionType = element.PostionType
 		thrift_ad_locations = append(thrift_ad_locations,thrift_ad_location)
 	}
-	thriftreq.ReqId = &req.ReqId
-	thriftreq.Business = cast.ToInt16(business)
+
+	thriftreq.Business = business
 	thriftreq.Imei = req.Imei
 	thriftreq.SessionId = req.SessionID
 	thriftreq.AdLocations = thrift_ad_locations
 	dictstring,_ := json.Marshal(context_dict)
 	thriftreq.ContextInfo = string(dictstring)
-	////thriftreq.AbtestParameters = 		//FIXME  ab test的更新
+	//thriftreq.AbtestParameters = "" 		//FIXME  ab test的更新
 	thriftreq.EnableRank = enableRank
-	thriftreq.Debug = true
-	thriftreq.Topk = req.Topk
+	thriftreq.Topk = topk
 }
 
+func initRecommend(thriftreq *predict.Req, req *RecommendReq){
+	fmt.Print("init thrift nil\n")
+	fmt.Print("init thrift nil\n")
+	fmt.Print("init thrift nil\n")
+
+
+	context_dict := make(map[string]interface{})
+	thrift_ad_locations := make([] *predict.AdLocation,0)
+	context_dict["net"] = req.Net
+	context_dict["ip"] = req.Ip
+	//if req.DeviceModel != "" {
+	//	context_dict["device_model"] = req.DeviceModel
+	//}
+	if req.VC != 0{
+		context_dict["vc"] = req.VC
+	}
+	if req.Language != ""{
+		context_dict["language"] = req.Language
+	}
+	if req.Uid != ""{
+		context_dict["uid"]= req.Uid
+	}
+	if req.Sn != ""{
+		context_dict["sn"] = req.Sn
+	}
+
+	var business int16
+	var enableRank bool
+	var topk int16
+	var appid int64
+	if req.EnableRank == nil{
+		enableRank = true
+	}else{
+		enableRank = *req.EnableRank
+	}
+	if req.Business == nil {
+		business = 1
+	}else{
+		business = *req.Business
+	}
+	if req.Topk == nil {
+		topk = 0
+	}else{
+		topk = *req.Topk
+	}
+	if req.AppId == nil {
+		appid = 0
+	}else{
+		appid = *req.AppId
+	}
+	for _,element := range req.AdLocations{
+		thrift_ad_location := predict.NewAdLocation()
+		thrift_ad_location.PositionId= element.PositionId
+		thrift_ad_location.PageId = element.PageId
+		thrift_ad_location.BlockId = element.BlockId
+		thrift_ad_location.RankId = element.RankId
+		thrift_ad_location.CategoryId = element.CategoryId
+		thrift_ad_location.TagId = element.TagId
+		thrift_ad_location.Position = element.Position
+		thrift_ad_location.PositionType = element.PostionType
+		thrift_ad_locations = append(thrift_ad_locations,thrift_ad_location)
+	}
+
+	thriftreq.Business = business
+	thriftreq.Imei = req.Imei
+	thriftreq.SessionId = req.SessionID
+	thriftreq.AdLocations = thrift_ad_locations
+	dictstring,_ := json.Marshal(context_dict)
+	thriftreq.ContextInfo = string(dictstring)
+	//thriftreq.AbtestParameters = "" 		//FIXME  ab test的更新
+	thriftreq.EnableRank = enableRank
+	thriftreq.Topk = topk
+	thriftreq.RelAppId = appid
+
+}
 func initIdea_predict(thriftreq *predict.Req, req *Idea_predict){
-	context_dict := make(map[string]string)
+	context_dict := make(map[string]interface{})
 	thrift_ideas := make([] *predict.Idea,0)
 	context_dict["net"] = req.Net
 	context_dict["ip"] = req.Ip
-	context_dict["device_model"] = req.DeviceModel
-	context_dict["vc"] = req.VC
-	context_dict["language"] = req.Language
-	context_dict["uid"] = req.Uid
-	context_dict["sn"] = req.Sn
-	context_dict["request_id"] = req.ReqId
+	//if req.DeviceModel != "" {
+	//	context_dict["device_model"] = req.DeviceModel
+	//}
+	//if req.VC != ""{
+	//	context_dict["vc"] = req.VC
+	//}
+	if req.Language != ""{
+		context_dict["language"] = req.Language
+	}
+	if req.Uid != ""{
+		context_dict["uid"]= req.Uid
+	}
+	if req.Sn != ""{
+		context_dict["sn"] = req.Sn
+	}
+
 	for _,element := range req.Ideas{
 		thrift_idea := predict.NewIdea()
 		thrift_idea.IdeaId= element.IdeaId
 		thrift_idea.Source = element.Source
 		thrift_ideas = append(thrift_ideas,thrift_idea)
 	}
-	thriftreq.ReqId = &req.ReqId
 	thriftreq.Imei = req.Imei
 	thriftreq.SessionId = req.SessionID
 	thriftreq.Ideas = thrift_ideas
 	dictstring,_ := json.Marshal(context_dict)
 	thriftreq.ContextInfo = string(dictstring)
 	//thriftreq.AbtestParameters = 		//FIXME  ab test的更新
-	thriftreq.Debug = true
+	//thriftreq.Debug = true
 	//
-	//fmt.Print("\n   this is initIdea_predict")
-	//fmt.Print(context_dict)
-	//fmt.Print("\n this is  all ideas ",thriftreq.Ideas)
-
 }
 
-//var ab_config *TSMap
-//func GetABTestParameters(version string) (string){
-//	conf, exists := ab_config.Get(version)
-//	if exists {
-//		json := conf.(*json.RawMessage)
-//		return fmt.Sprintf(`{"ab_version":"%s","3rd_rec":%s}`, version, string(*json))
-//	}else{
-//		return "{}"
-//	}
-//}
-//
-//func getABFromReq(c *gin.Context) string{
-//	if ab_version,exits:= c.Get("version");exits{
-//		return GetABTestParameters(cast.ToString(ab_version))
-//	}
-//	return "{}"
-//}
+func initSearch (thriftreq *predict.Req, req *Search){
+	context_dict := make(map[string]interface{})
+	context_dict["net"] = req.Net
+	context_dict["ip"] = req.Ip
+	//if req.DeviceModel != "" {
+	//	context_dict["device_model"] = req.DeviceModel
+	//}
+	if req.VC != 0{
+		context_dict["vc"] = req.VC
+	}
+	if req.Language != ""{
+		context_dict["language"] = req.Language
+	}
+	if req.Uid != 0{
+		context_dict["uid"]= req.Uid
+	}
+	if req.Sn != ""{
+		context_dict["sn"] = req.Sn
+	}
+
+	var business int16
+	var enableRank bool
+	var source int16
+	keyword := req.Kw        //*string类型
+	if req.EnableRank == nil{
+		enableRank = true
+	}else{
+		enableRank = *req.EnableRank
+	}
+	if req.Source == nil {
+		source = 1
+	}else{
+		source = *req.Source
+	}
+	if req.Business == nil {
+		business = 1
+	}else{
+		business = *req.Business
+	}
+
+	thriftreq.Business = business
+	thriftreq.Imei = req.Imei
+	thriftreq.SessionId = req.SessionID
+	thriftreq.Query = keyword
+	search := "search"
+	thriftreq.QueryType = &search
+	thriftreq.AdLocations = make([]*predict.AdLocation,0)
+	dictstring,_ := json.Marshal(context_dict)
+	thriftreq.ContextInfo = string(dictstring)
+	//thriftreq.AbtestParameters = 		//FIXME  ab test的更新
+	thriftreq.EnableRank = enableRank
+	thriftreq.Source = source
+}
+
+
+func initUpload_behavior (thriftreq *predict.Req, req *Search){
+	context_dict := make(map[string]interface{})
+	context_dict["net"] = req.Net
+	context_dict["ip"] = req.Ip
+	//if req.DeviceModel != "" {
+	//	context_dict["device_model"] = req.DeviceModel
+	//}
+	if req.VC != 0{
+		context_dict["vc"] = req.VC
+	}
+	if req.Language != ""{
+		context_dict["language"] = req.Language
+	}
+	if req.Uid != 0{
+		context_dict["uid"]= req.Uid
+	}
+	if req.Sn != ""{
+		context_dict["sn"] = req.Sn
+	}
+
+	var business int16
+	var enableRank bool
+	var source int16
+	keyword := req.Kw        //*string类型
+	if req.EnableRank == nil{
+		enableRank = true
+	}else{
+		enableRank = *req.EnableRank
+	}
+	if req.Source == nil {
+		source = 1
+	}else{
+		source = *req.Source
+	}
+	if req.Business == nil {
+		business = 1
+	}else{
+		business = *req.Business
+	}
+
+	thriftreq.Business = business
+	thriftreq.Imei = req.Imei
+	thriftreq.SessionId = req.SessionID
+	thriftreq.Query = keyword
+	search := "search"
+	thriftreq.QueryType = &search
+	thriftreq.AdLocations = make([]*predict.AdLocation,0)
+	dictstring,_ := json.Marshal(context_dict)
+	thriftreq.ContextInfo = string(dictstring)
+	//thriftreq.AbtestParameters = 		//FIXME  ab test的更新
+	thriftreq.EnableRank = enableRank
+	thriftreq.Source = source
+}
+
+func MD5(text string) string {
+	hasher := md5.New()
+	hasher.Write([]byte(text))
+	return hex.EncodeToString(hasher.Sum(nil))
+}
 
 func get_check_error_response(req *CheckRequst) (string, interface{}){
 	data := map[string]interface{} {"reqid": cast.ToString(time.Now().Unix()), "code":META_DATA_ERROR, "msg":"failure"}
@@ -211,20 +460,26 @@ func get_check_error_response(req *CheckRequst) (string, interface{}){
 	appKey := req.Appkey
 	checkinfo := req.Checkinfo
 	nonce := req.Nonce
+	//fmt.Print(" Metadata==")
+	//fmt.Print(" ",request_id," ",appKey," ",checkinfo," ",nonce,"\n")
 	if request_id !="" {
 		data["reqid"] =  request_id
 	}
 	secret := "8c2f716071cea8233dec871fd7cefcaf"
-	if request_id=="" || appKey=="" || checkinfo=="" || nonce==0 || appKey != "c7d805ab7f396ed6d420cd8da0f788ca"{
+	if request_id == "" || checkinfo == "" || nonce == "" || nonce == 0 || appKey != "c7d805ab7f396ed6d420cd8da0f788ca" {
 		return "", data
 	}
 	all_str_for_md5 :=cast.ToString(secret)+cast.ToString(appKey)+cast.ToString(nonce)
 	h := md5.New()
 	h.Write([]byte(all_str_for_md5))
+	//fmt.Print(MD5(all_str_for_md5)," === ",checkinfo," === ",hex.EncodeToString(h.Sum(nil)))
 	if hex.EncodeToString(h.Sum(nil)) != checkinfo{
-		fmt.Print("\n 校验失败 \n")
+		//fmt.Print("checkHeader error \n")
 		data["code"] = AUTHENTICATION_ERROR
 		return request_id,  data
+	}
+	if MD5(all_str_for_md5)==checkinfo && checkinfo==hex.EncodeToString(h.Sum(nil)){
+	  //fmt.Print("checkHeader success\n")
 	}
 	return request_id, nil
 }

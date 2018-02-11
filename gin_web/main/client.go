@@ -6,8 +6,7 @@ import (
 	"strings"
 	"math/rand"
 	"code.byted.org/kite/kitc"
-	"code.byted.org/gopkg/logs"
-	"sync"
+	//"code.byted.org/gopkg/logs"
 	"time"
 	"errors"
 	"fmt"
@@ -22,28 +21,24 @@ import (
 var AllServers []*kitc.Instance				//在initthrift 中初始化
 //const HASH_WINDOW_SIZE = 10
 //const TAG_LAST_ERROR_KEY = "_error_time"
-//const BLOCK_TIMEOUT_CONNECT_TIME = 5
+const TIMEOUT_CONNECT_TIME = 300
 //const RETRY_CONNECT_COUNT = 3
 
 var pool connpool.ConnPool
-var predictConf map[string]string
-var connTagMutex *sync.RWMutex
+//var predictConf map[string]string
+//var connTagMutex *sync.RWMutex
 
 func newInstances(hosts []string) []*kitc.Instance {
 	var ins []*kitc.Instance
 	for _, hostPort := range hosts {
 		val := strings.Split(hostPort, ":")
 		if len(val) == 2 {
-			//fmt.Print("\n")
-			//fmt.Print(val[0],"   ", val[1])
-			//fmt.Print("\n")
 			ins = append(ins, kitc.NewInstance(val[0], val[1], make(map[string]string)))
 		}
 	}
 	return ins
 }
 
-//重新排序instance
 func randomInstances(xs []*kitc.Instance) []*kitc.Instance {
 	rand.Seed(time.Now().UnixNano())
 	randXS := make([]*kitc.Instance, len(xs))
@@ -59,17 +54,13 @@ func randomInstances(xs []*kitc.Instance) []*kitc.Instance {
 	}
 	return randXS
 }
-/*
-1。从随机顺序的server 加读锁 判断tags情况(instance是否可以链接?)
-2. 连续三次没有成功连接到server直接退出
- */
 func getConn(xs []*kitc.Instance) (c net.Conn, err error) {
 	for _, i := range xs {
-		c, err = pool.Get(i.Host(), i.Port(), 300*time.Millisecond) //FIXME 注意下时间
-		fmt.Print("this is getconn func \n")
-		fmt.Print(c.RemoteAddr().String()," ","local:")
-		fmt.Print(c.LocalAddr().String())
-		fmt.Print("\n")
+		c, err = pool.Get(i.Host(), i.Port(), TIMEOUT_CONNECT_TIME*time.Millisecond) //FIXME 注意下时间
+		//fmt.Print("RemoteConn:")
+		//fmt.Print(c.RemoteAddr().String()," ","local:")
+		//fmt.Print(c.LocalAddr().String())
+		//fmt.Print("\n")
 		return c,err
 	}
 	return
@@ -79,56 +70,41 @@ func getPredictClient(conn net.Conn) *predict.PredictClient {
 	var transport thrift.TTransport
 	protocolFactory := thrift.NewTBinaryProtocolFactoryDefault()
 	transportFactory := thrift.NewTFramedTransportFactory(thrift.NewTBufferedTransportFactory(4096))
-	transport = thrift.NewTSocketFromConnTimeout(conn, 300 * time.Millisecond)
-	//fmt.Print("\n")
-	//fmt.Print(conn.RemoteAddr().String())
-	//fmt.Print("\n")
+	transport = thrift.NewTSocketFromConnTimeout(conn, TIMEOUT_CONNECT_TIME * time.Millisecond)
 	transport = transportFactory.GetTransport(transport)
 	return predict.NewPredictClientFactory(transport, protocolFactory)
 }
-/*
-1. thrift返回的err!=nil 使得对应handler abort
-2. err==nil 同时状态码==success
- */
 func checkResponse(rsp interface{}, err error) (interface{}, error) {
 	if err != nil || rsp==nil  {
 		return rsp,err
 	}
 	r := reflect.ValueOf(rsp)
 	f_status := reflect.Indirect(r).FieldByName("Status")
-	f_rankresult := reflect.Indirect(r).FieldByName("RankResults")
 	status := f_status.String()
-	//version := f_version.String()
+
 	if status != "success" {
-		msg := reflect.Indirect(r).FieldByName("ErrMessage").Elem().String()
-		return rsp, errors.New(fmt.Sprintf("Predict error %d %s", status, msg))
+		//msg := reflect.Indirect(r).FieldByName("ErrMessage").Elem().String()
+		//return rsp, errors.New(fmt.Sprintf("Predict error %d %s", status, msg))
+		return rsp, errors.New(fmt.Sprintf("Predict error %d %s", status, "status error"))
 	}
 	fmt.Print("\n")
 	fmt.Print("checkresponse status is:",status,"\n")
-	fmt.Print(string(f_rankresult.Bytes()))
 	fmt.Print("\n")
-
 	return rsp, nil
 }
-/*
-1。 random序列的server slice
-2。 getconn 寻找可链接的server
-3。 已构造request doCallClient(req coon)   链接对应thrift得到response
-4。 返回 server thrift rsp
-*/
 func CallClient(name string, req interface{}) (interface{}, error) {
 
 	var ins []*kitc.Instance
 	ins = randomInstances(AllServers)
 	conn, err := getConn(ins)
 	//defer pool.Put(conn, err)
-	if err != nil {
-		logs.Error("connect all err", err)
-		return nil, err
-	}
+	//if err != nil {
+	//	logs.Error("connect all err", err)
+	//	return nil, err
+	//}
 	rsp, err := doCallClient(name, req, conn)			//响应
 	if err != nil {
-		fmt.Printf("call fail %s %s conn=%s req=%s rsp=%s", name, err, conn.RemoteAddr(), req, rsp)
+		fmt.Printf("call fail %s \n %s \n conn=%s \n req=%s \n rsp=%s\n", name, err, conn.RemoteAddr(), req, rsp)
 	}
 	return rsp, err
 }
@@ -137,15 +113,8 @@ func doCallClient(name string, req interface{}, conn net.Conn) (interface{}, err
 	var client *predict.PredictClient
 	client = getPredictClient(conn)
 
-	//fmt.Print("\n")
-	//test := req.(*predict.Req)
-	//fmt.Print("docallclient"," = ",test.Debug," ")
-	//fmt.Print("docallclient"," = ",test.Imei)
-	//fmt.Print("\n")
-
 	switch name {
-	//case "binary_predict":
-	//return client.BinaryPredict(req.(*meizu.PredictBinaryPredictArgs))
+
 	case "callback":
 		return checkResponse(client.UploadServerImprOneway(req.(*predict.Req)),nil)
 
@@ -153,19 +122,35 @@ func doCallClient(name string, req interface{}, conn net.Conn) (interface{}, err
 		return checkResponse(client.FeedPredict(req.(*predict.Req)))
 
 	case "predictbinary":
+		//fmt.Print("\n")
+		//fmt.Print("this is doCallClient req\n")
+		//fmt.Print(req.(*predict.Req))
+		//fmt.Print("\n")
 		return checkResponse(client.BinaryPredict(req.(*predict.Req)))
-	//
-	//case "Predict":
-	//	return checkResponse(client.Predict(req.(*vivo.PredictReq)))
-	//
-	//case "Search":
-	//	return checkResponse(client.Search(req.(*vivo.PredictReq)))
-	//
-	//case "Upload":
-	//	return checkResponse(client.Upload(req.(*vivo.BehaviorReq)))
-	//
-	//case "Related":
-	//	return checkResponse(client.Related(req.(*vivo.PredictReq)))
+
+	case "recommend":
+		//fmt.Print("\n")
+		//fmt.Print("this is doCallClient req\n")
+		//fmt.Print(req.(*predict.Req))
+		//fmt.Print("\n")
+		return checkResponse(client.RelatePredict(req.(*predict.Req)))
+
+	case "search":
+		return checkResponse(client.BinarySearch(req.(*predict.Req)))
+
+	case "upload_behavior":
+		//fmt.Print("\n")
+		//fmt.Print("this is doCallClient req\n")
+		//fmt.Print(req.(*predict.AckReq))
+		//fmt.Print("\n")
+		return checkResponse(client.Ack(req.(*predict.AckReq)))
+
+	case "upload_applist":
+		fmt.Print("\n")
+		fmt.Print("this is doCallClient req\n")
+		fmt.Print(req.(*predict.AckReq))
+		fmt.Print("\n")
+		return checkResponse(client.UploadApplist(req.(*predict.AckReq)))
 
 	}
 	err := errors.New("invalid method name")
@@ -182,7 +167,6 @@ func getWholeLine(scanner *bufio.Scanner) (line string, ok bool) {
 		line := scanner.Text()
 		line = strings.TrimSpace(line)
 		if strings.HasSuffix(line, "\\") {
-			// merge line ends with backslash
 			line = line[:len(line)-1]
 			whole_line += line
 			continue
@@ -212,7 +196,6 @@ func splitLine()  []string {
 			break
 		}
 		result := strings.Split(string(line), " ")
-		//fmt.Print(result[0])
 		if result[0] == "meizu_ad_predict_host" {
 			serverHost = result
 		}
@@ -229,25 +212,13 @@ func splitLine()  []string {
 	for i,_ := range hostPort{
 		hostPort[i] = strings.Replace(hostPort[i], ",", "", -1)
 	}
-	//for _,val := range hostPort{
-	//	fmt.Print(val," ")
-	//}
 	return hostPort
 }
 func InitThriftClient() {
-	/*
-	 mutex Allservers pool初始化
-	 */
-	hosts := splitLine()
-	//hosts :=[]string {"10.3.29.13:7250","10.3.29.14:7250"}
-	connTagMutex = &sync.RWMutex{}
+
+	 //hosts := splitLine()
+	hosts := []string{"10.8.64.232:7270"}
 	AllServers = newInstances(hosts)
 	pool = connpool.NewShortPool()
-	fmt.Print("init thrift ok\n")
-	//InitABConfig()
+	//fmt.Print("init thrift ok\n")
 }
-
-//func main(){
-//	parseConf()
-//	InitThriftClient()
-//}
