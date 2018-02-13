@@ -1,9 +1,0 @@
-syntax = "proto2";
-package toutiao.meizu.app;
-
-message BinaryDisplayResult {
-    required int32 code = 1;
-    optional string message = 2;
-    optional bytes value = 3;
-};
-
