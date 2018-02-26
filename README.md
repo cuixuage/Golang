@@ -10,3 +10,6 @@ WithCancel和WithTimeout两个方法用于在已有的context上创建新的cont
 context可以被多个并发的Goroutine使用，对context的访问是并发安全的   
 
 c.Abort()只是设置了一些内部标志，标志着上下文以某种方式表明异常终止。  但是在后续中间件中可以根据Isabort() 判断，从而进行 C.Json(500,"") 返回一些error信息   
+
+gin 从panic中恢复： 加middleware避免的panic导致的进程中止
+RecoveryWithWriter returns a middleware for a given writer that recovers from any panics and writes a 500 if there was one.
