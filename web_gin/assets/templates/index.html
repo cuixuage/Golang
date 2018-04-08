@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>test</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/assets/statics/css/bootstrap.min.css">
+    <script src="/assets/statics/js/jquery.min.js"></script>
+    <script src="/assets/statics/js/popper.min.js"></script>
+    <script src="/assets/statics/js/bootstrap.min.js"></script>
+    <script src="/assets/statics/js/vue.min.js"></script>
+
+</head>
+<body>
+<div class="container" id="vueApp">
+    <div class="row mx-auto w-75" style="margin-top: 20px">
+        <div class="col-12 text-center">
+            <h3>Goreplay</h3>
+        </div>
+    </div>
+    <div class="row mx-auto w-75" style="height: 20px"></div>
+    <div class="row mx-auto w-75">
+        <div class="col-6">
+            <div class="btn-group">
+                <button type="button" class="btn btn-outline-info btn-sm" data-toggle="modal" data-target="#myModal">新增</button>
+                <button type="button" class="btn btn-outline-primary btn-sm" @click="saveRows">保存</button>
+            </div>
+            <button type="button" class="btn btn-outline-warning btn-sm" @click="delRows">删除</button>
+        </div>
+        <div class="col-6">
+            <div class="input-group">
+                <input type="text" class="form-control input-group-sm" placeholder="输入序号搜索">
+                <span class="input-group-btn">
+                        <button class="btn btn-outline-primary" type="button">
+                            <i class="fa fa-search"></i>search</button>
+                    </span>
+            </div>
+        </div>
+    </div>
+    <div class="row mx-auto w-75" style="height: 15px"></div>
+
+    <div class="row mx-auto w-75">
+        <div class="col-4">
+            <input id="myLogFileTime" type="text" class="form-control" placeholder="current time" :value="valueLog" v-model="logFileName">
+        </div>
+        <div class="col-lg-8">
+            <button type="button" class="btn btn-outline-primary" data-dismiss="modal" @click="updateTime">更新时间Tar包</button>
+
+        </div>
+    </div>
+    <div class="row mx-auto w-75" style="height: 15px"></div>
+    <div class="row mx-auto w-75">
+        <div class="col-4">
+            <input id="myIpPort" type="text" class="form-control" placeholder="HOST:PORT" :value="valueIP" v-model="desHostPort">
+        </div>
+    </div>
+
+    <div class="row mx-auto w-75" style="height: 20px"></div>
+
+    <div class="row mx-auto w-75">
+        <div class="col-12">
+            <table class="table table-hover table-success">
+                <thead class="thead-default">
+                <tr>
+                    <th><input type="checkbox"></th>
+                    <th>序号</th>
+                    <th>路径</th>
+                    <th>流量</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr v-for="(facility,index) in facilities">
+                    <td><input type="checkbox" :value="index" v-model="checkedRows"></td>
+                    <td>{{index+1}}</td>
+                    <td>{{facility.url}}</td>
+                    <td>{{facility.qps}}</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="col-md-auto text-center">
+        <button id="singlebutton" type="button" class="btn btn-outline-info " @click="reload"> 读取上次配置 </button>
+    </div>
+    <div class="row mx-auto w-75" style="height: 20px"></div>
+    <div class="col-md-auto text-center">
+        <button id="singlebutton" type="button" class="btn btn-outline-success " @click="submit"> 提交 </button>
+    </div>
+
+    <!-- 模态框 -->
+    <div class="modal fade" id="myModal">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4 class="modal-title">ALL</h4>
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-3">URL：</div>
+                        <div class="col-9">
+                            <input class="form-control" placeholder="url" v-model="newRow.url">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-3">QPS：</div>
+                        <div class="col-9">
+                            <input class="form-control" placeholder="qps" v-model="newRow.qps">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-primary" data-dismiss="modal" @click="addRow">确认</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+<script>
+    // var datas = [];
+    new Vue({
+        el: "#vueApp",
+        data: {
+            checkAll: false,
+            checkedRows: [],
+            facilities: [],
+            newRow:{},
+            valueLog:'',           //currentTime logFile
+            logFileName:'',
+            valueIP:'',
+            desHostPort:''
+        },
+        methods: {
+            addRow: function () {
+                this.facilities.push(this.newRow);
+                this.newRow = {};
+            },
+            saveRows:function () {//保存表格数据
+
+            },
+            delRows:function () {
+                if (this.checkedRows.length <= 0){
+                    alert("您未选择需要删除的数据");
+                    return false;
+                }
+                if (!confirm("您确定要删除选择的数据吗？")){
+                    return false;
+                }
+
+                for(var i=0;i<this.checkedRows.length;i++){
+                    var checkedRowIndex = this.checkedRows[i];
+                    this.facilities = $.grep(this.facilities,function (facility,j) {
+                        return j != checkedRowIndex;
+                    });
+                }
+                this.checkedRows = [];
+
+                console.log(this.facilities);
+            },
+            submit:function () {
+                var jsonAll = {
+                    "time":$("#myLogFileTime").val(),
+                    "hostPort":$("#myIpPort").val(),
+                    "urlList":this.facilities
+                };
+                console.log(jsonAll);
+                console.log(JSON.stringify(jsonAll));
+                $.ajax({
+                    type: "post",
+                    dataType: "json",
+                    url: "/submitAndStore",
+                    data: JSON.stringify(jsonAll),
+                    contentType: "application/json; charset=utf-8"
+                });
+            },
+            reload:function () {
+                var test_this = this;
+                $.ajax({
+                    type: "post",
+                    dataType: "json",
+                    url: "/reload",
+                    contentType: "application/json; charset=utf-8",
+                    success: function(returnData) {
+                        var dataFromBack = eval( returnData );
+                        console.log(dataFromBack);
+                        var _key = Object.keys(dataFromBack);
+                        var _value = Object.values(dataFromBack);
+                        for ( var i=0; i<_key.length-2 ;i ++){
+                            test_this.newRow = {url:_key[i],qps:_value[i]};
+                            console.log(_key.length, test_this.newRow);
+                            test_this.facilities.push(test_this.newRow );
+                            test_this.newRow = {};
+                        }
+                        test_this.logFileName = _value[_key.length-1];
+                        test_this.desHostPort = _value[_key.length-2];
+                        // console.log(test_this.logFileName)
+                    }
+                });
+            },
+
+            updateTime:function(){
+                //获取当前时间  按照%Y%-M-%D格式写入
+                var test_this = this;
+                test_this.logFileName = this.datetime();
+                // console.log( this.logFileName);
+
+            },
+            datetime:function(){
+                var now = new Date();
+                var year = now.getFullYear();
+                var month = now.getMonth();
+                var date = now.getDate();
+                var hour = now.getHours();
+                month = month + 1;
+                if (month < 10) month = "0" + month;
+                if (date < 10) date = "0" + date;
+                if (hour < 10) hour = "0" + hour;
+                var time;
+                time = year + "-" + month + "-" + date ;
+                return time;
+            }
+        }
+    });
+</script>
