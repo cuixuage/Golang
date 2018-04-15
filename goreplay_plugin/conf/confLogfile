@@ -1,0 +1,5 @@
+tickerTime	30
+lastLogFile	2018-04-94.log
+lastHostPost	127.0.0.1:8282
+inputFileDir	/Users/cuixuange/goreplay/tmp/
+startPath	/Users/cuixuange/goreplay/goreplay

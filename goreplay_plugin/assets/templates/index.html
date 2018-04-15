@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>test</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/assets/statics/css/bootstrap.min.css">
+    <script src="/assets/statics/js/jquery.min.js"></script>
+    <script src="/assets/statics/js/popper.min.js"></script>
+    <script src="/assets/statics/js/bootstrap.min.js"></script>
+    <script src="/assets/statics/js/vue.min.js"></script>
+
+</head>
+<body>
+<div class="container" id="vueApp">
+    <div class="row mx-auto w-75" style="margin-top: 20px">
+        <div class="col-12 text-center">
+            <h3>APIReplay</h3>
+        </div>
+    </div>
+    <div class="row mx-auto w-75" style="height: 20px"></div>
+    <div class="row mx-auto w-75">
+        <div class="col-6">
+            <div class="btn-group">
+                <button type="button" class="btn btn-outline-info btn-sm" data-toggle="modal" data-target="#myModal">新增</button>
+                <button type="button" class="btn btn-outline-primary btn-sm" data-toggle="modal" @click="updateRows">更新</button>
+            </div>
+            <button type="button" class="btn btn-outline-warning btn-sm" @click="delRows">删除</button>
+        </div>
+        <!--
+        <div class="col-6">
+            <div class="input-group">
+                <input type="text" class="form-control input-group-sm" placeholder="输入序号搜索">
+                <span class="input-group-btn">
+                        <button class="btn btn-outline-primary" type="button">
+                            <i class="fa fa-search"></i>search</button>
+                    </span>
+            </div>
+        </div>
+        -->
+    </div>
+    <div class="row mx-auto w-75" style="height: 15px"></div>
+
+    <div class="row mx-auto w-75">
+        <div class="col-5">
+            <div class="input-group">
+                <label type="label" class="label col-form-label" data-dismiss="modal" >LogFile=</label>
+                <input id="myLogFileTime" type="text" class="form-control" placeholder="current time" :value="valueLog" v-model="logFileName">
+            </div>
+        </div>
+
+        <!--
+        <div class="col-lg-8">
+            <button type="button" class="btn btn-outline-primary" data-dismiss="modal" @click="updateTime">更新时间Tar包</button>
+
+        </div>
+        -->
+    </div>
+    <div class="row mx-auto w-75" style="height: 15px"></div>
+    <div class="row mx-auto w-75">
+        <div class="col-5">
+            <div class="input-group">
+            <label type="label" class="label col-form-label" data-dismiss="modal" >HostPort=   </label>
+            <input id="myIpPort" type="text" class="form-control" placeholder="HOST:PORT" :value="valueIP" v-model="desHostPort">
+            </div>
+        </div>
+    </div>
+    <div class="row mx-auto w-75" style="height: 15px"></div>
+
+
+    <div class="row mx-auto w-75">
+        <div class="col-5">
+                <div class="tab-pane">
+                        <label type="label" class="label col-form-label" data-dismiss="modal" data-toggle="collapse" data-parent="#accordion" href="#collapseOne">
+                            PathConf
+                        </label>
+                </div>
+                <div id="collapseOne" class="panel-collapse collapse in">
+                    <div class="input-group">
+                        <label type="label" class="label col-form-label" data-dismiss="modal" >StartPath=</label>
+                        <input id="StartPath" type="text" class="form-control" placeholder="goreplay start path" :value="startPath" v-model="startPathM">
+                    </div>
+                    <div class="row mx-auto w-75" style="height: 15px"></div>
+                    <div class="input-group">
+                        <label type="label" class="label col-form-label" data-dismiss="modal" >LogFileDir=</label>
+                        <input id="InputFileDir" type="text" class="form-control" placeholder="input log file directory" :value="inputFileDir" v-model="inputFileDirM">
+                    </div>
+                    <div class="row mx-auto w-75" style="height: 15px"></div>
+                    <div class="input-group">
+                        <label type="label" class="label col-form-label" data-dismiss="modal" >TimeTicker=</label>
+                        <input id="TickerTime" type="text" class="form-control" placeholder="time(s) to scan LogDir" :value="tickerTime" v-model="tickerTimeM">
+                    </div>
+                </div>
+        </div>
+    </div>
+
+
+
+    <div class="row mx-auto w-75" style="height: 20px"></div>
+
+    <div class="row mx-auto w-75">
+        <div class="col-12">
+            <table class="table table-hover table-success">
+                <thead class="thead-default">
+                <tr>
+                    <th><input type="checkbox"></th>
+                    <th>序号</th>
+                    <th>路径</th>
+                    <th>流量</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr v-for="(facility,index) in facilities">
+                    <td><input type="checkbox" :value="index" v-model="checkedRows"></td>
+                    <td>{{index+1}}</td>
+                    <td>{{facility.url}}</td>
+                    <td>{{facility.qps}}</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+<!--
+    <div class="col-md-auto text-center">
+        <button id="singlebutton" type="button" class="btn btn-outline-info " @click="reload"> 读取上次配置 </button>
+    </div>
+    <div class="row mx-auto w-75" style="height: 20px"></div>
+
+    <div class="col-md-auto text-center">
+        <button id="singlebutton" type="button" class="btn btn-outline-success " @click="submit"> 提交 </button>
+    </div>
+-->
+    <!-- 模态框 -->
+    <div class="modal fade" id="myModal">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4 class="modal-title">Add Rows</h4>
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-3">URL：</div>
+                        <div class="col-9">
+                            <input class="form-control" placeholder="url" v-model="newRow.url">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-3">QPS：</div>
+                        <div class="col-9">
+                            <input class="form-control" placeholder="qps" v-model="newRow.qps">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-primary" data-dismiss="modal" @click="addRow">确认</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="myModal_update">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4 class="modal-title">UpdateQps</h4>
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-3">URL：</div>
+                        <div class="col-9">
+                            <input class="form-control" placeholder="url" v-model="updateRow.url">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-3">QPS：</div>
+                        <div class="col-9">
+                            <input class="form-control" placeholder="qps" v-model="updateRow.qps">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-primary" data-dismiss="modal" @click="submit">确认</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+<script>
+    // var datas = [];
+    new Vue({
+        el: "#vueApp",
+        data: {
+            checkAll: false,
+            checkedRows: [],
+            facilities: [],
+            newRow:{},
+            updateRow:{},
+
+            valueLog:'',           //currentTime logFile
+            logFileName:'',
+            valueIP:'',
+            desHostPort:'',
+            startPath:'',
+            startPathM:'',
+            inputFileDir:'',
+            inputFileDirM:'',
+            tickerTime:'',
+            tickerTimeM:''
+
+        },
+        methods: {
+            addRow: function () {
+                this.facilities.push(this.newRow);
+                this.newRow = {};
+                this.submit();
+            },
+            delRows:function () {
+                var strUrls = Object.values(eval(this.facilities));
+                // console.log(strUrls);
+                for(var i=0;i<this.checkedRows.length;i++){
+                    var delUrl =  Object.values(eval(strUrls[this.checkedRows[i]]))[0];
+                    console.log(delUrl);
+                    this.facilities = $.grep(this.facilities,function (e) {
+                        return e.url != delUrl;
+                    });
+                    console.log(this.facilities)
+                }
+                console.log(this.facilities)
+                this.checkedRows = [];
+                // console.log(this.checkedRows);
+                this.submit()
+            },
+            submit:function () {
+                var jsonAll = {
+                    "newLogFile":$("#myLogFileTime").val(),
+                    "hostPort":$("#myIpPort").val(),
+                    "startPath":$("#StartPath").val(),
+                    "inputDir":$("#InputFileDir").val(),
+                    "tickerTime":$("#TickerTime").val(),
+                    "urlList":this.facilities
+                };
+                console.log(jsonAll);
+                console.log(JSON.stringify(jsonAll));
+                $.ajax({
+                    type: "post",
+                    dataType: "json",
+                    url: "/submitAndStore",
+                    data: JSON.stringify(jsonAll),
+                    contentType: "application/json; charset=utf-8"
+                });
+            },
+            reload:function () {
+                var test_this = this;
+                $.ajax({
+                    type: "post",
+                    dataType: "json",
+                    url: "/reload",
+                    contentType: "application/json; charset=utf-8",
+                    success: function(returnData) {
+                        var numlogFileName;
+                        var numdesHostPort;
+                        var numstartPathM;
+                        var numInputFileDirM;
+                        var numtickerTimeM;
+                        var dataFromBack = eval( returnData );
+                        console.log(dataFromBack);
+                        var _key = Object.keys(dataFromBack);
+                        var _value = Object.values(dataFromBack);
+                        for ( var i=0; i<_key.length-5 ;i ++){
+                            test_this.newRow = {url:_key[i],qps:_value[i]};
+                            // console.log(_key.length, test_this.newRow);
+                            test_this.facilities.push(test_this.newRow );
+                            test_this.newRow = {};
+                        }
+                        for (i=0;i<_key.length;i++){
+                            if (_key[i] === 'inputFileDir') numInputFileDirM = i;
+                            if (_key[i] === 'lastHostPost') numdesHostPort = i;
+                            if (_key[i] === 'lastLogFile') numlogFileName = i;
+                            if (_key[i] === 'startPath') numstartPathM = i;
+                            if (_key[i] === 'tickerTime') numtickerTimeM = i;
+                        }
+                        test_this.logFileName = _value[numlogFileName];
+                        test_this.desHostPort = _value[numdesHostPort];
+                        test_this.startPathM = _value[numstartPathM];
+                        test_this.inputFileDirM = _value[numInputFileDirM];
+                        test_this.tickerTimeM = _value[numtickerTimeM];
+                        // console.log(test_this.logFileName)
+                    }
+                });
+            },
+            updateTime:function(){
+                //获取当前时间  按照%Y%-M-%D格式写入
+                var test_this = this;
+                test_this.logFileName = this.datetime();
+                // console.log( this.logFileName);
+
+            },
+            datetime:function(){
+                var now = new Date();
+                var year = now.getFullYear();
+                var month = now.getMonth();
+                var date = now.getDate();
+                var hour = now.getHours();
+                month = month + 1;
+                if (month < 10) month = "0" + month;
+                if (date < 10) date = "0" + date;
+                if (hour < 10) hour = "0" + hour;
+                var time;
+                time = year + "-" + month + "-" + date ;
+                return time;
+            },
+            updateRows: function () {
+                if (this.checkedRows.length <= 0){
+                    alert("您未选择需要更新的数据");
+                    return false;
+                }
+                var test_facilities = this.facilities;
+                var strUrls = Object.values(eval(this.facilities));
+                var updateUrl =  Object.values(eval(strUrls[this.checkedRows[0]]))[0];
+                // console.log(updateUrl);
+                test_facilities = $.grep(test_facilities,function (e) {
+                    return e.url == updateUrl;
+                });
+                // console.log(test_facilities);
+                this.checkedRows = [];
+
+                this.updateRow = test_facilities[0];
+                console.log(this.updateRow);
+                $('#myModal_update').modal({
+                    backdrop:'static',
+                    keyboard:true,
+                    show:true
+                })
+            }
+        },
+        created: function () {
+            this.reload();
+            // console.log('reload ok')
+        }
+    });
+</script>
