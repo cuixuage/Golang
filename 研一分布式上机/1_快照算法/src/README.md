@@ -1,0 +1,1 @@
+export GOPATH=/home/cui/distributed_system/snapshot
